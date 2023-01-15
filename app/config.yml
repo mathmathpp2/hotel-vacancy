@@ -1,0 +1,17 @@
+globals:
+  filters:
+    - no_smoking
+  conditions:
+    point_rate: 15
+    stay_time: 30
+    credit: 20000
+hotels:
+  # example
+  - name: Hotel XXXXXXXX
+    acm_id: "XXXXXXXX"
+    sitea_url: https://sitea.com/XXXXXXXX/
+    filters:
+      - club_floor
+    conditions:
+      point_rate: 20
+    enabled: true

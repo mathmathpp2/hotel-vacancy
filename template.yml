@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  DdbTableName:
+    Type: String
+  DdbStreamArn:
+    Type: String
+  Notifier:
+    Type: String
+    AllowedValues:
+      - SLACK
+      - LINE
+    Default: SLACK
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Architectures:
+    - arm64
+    Layers: !Ref LambdaLayer
+    Environment:
+      Variables:
+        LINE_TOKEN: !Sub '{{resolve:secretsmanager:secrets:SecretString:line_bot_token}}'
+        SLACK_WEBHOOK: !Sub '{{resolve:secretsmanager:secrets:SecretString:slack_webhook_url}}'
+        NOTIFIER: !Ref Notifier
+
+Resources:
+  AppFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-app
+      CodeUri: ./app/
+      Handler: app.handlers.finder.lambda_handler
+      MemorySize: 256
+      Timeout: 900
+      Events:
+        Cron:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 0/6 * * ? *)
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName: !Ref DdbTableName
+
+  AppFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AppFunction}
+      RetentionInDays: 30
+
+  StreamFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-stream
+      CodeUri: ./app/
+      Handler: app.handlers.stream.lambda_handler
+      MemorySize: 256
+      Timeout: 30
+      Events:
+        Stream:
+          Type: DynamoDB
+          Properties:
+            Stream: !Ref DdbStreamArn
+            BatchSize: 1
+            StartingPosition: LATEST
+      Policies:
+      - DynamoDBStreamReadPolicy:
+          TableName: !Ref DdbTableName
+          StreamName: !Ref DdbStreamArn
+      - DynamoDBCrudPolicy:
+          TableName: !Ref DdbTableName
+
+  StreamFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${StreamFunction}
+      RetentionInDays: 30
+
+  LambdaLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub ${AWS::StackName}-layer
+      CodeUri: ./layer/
+      CompatibleRuntimes:
+      - python3.9
+    Metadata:
+      BuildMethod: python3.9
